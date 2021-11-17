@@ -52,12 +52,15 @@ tbsp_test |> count(TB)
 ```{r}
 skimr::skim(tbsp_train)
 visdat::vis_miss(tbsp_train)
-# tbsp_train  |> 
-#   select(-id, -cod_mun)  |> 
-#   cor( method = "spearman")  |> 
-#   corrplot::corrplot()
+tbsp_train  |> 
+   select(where(is.numeric))  |> 
+   cor()  |> 
+   corrplot::corrplot()
 ```
-# Data Prep
+
+# Regressão Logística (não é Machine Learning...)
+
+## Data Prep
 
 ```{r}
 tbsp_recipe <- recipe(TB ~ ., data = tbsp_train |> 
@@ -66,7 +69,7 @@ tbsp_recipe <- recipe(TB ~ ., data = tbsp_train |>
   step_normalize(all_numeric_predictors())  |> 
   step_novel(all_nominal_predictors()) |> 
   step_zv(all_predictors()) |> 
-  # step_poly(all_numeric_predictors(), degree = 9)  |> 
+  # step_poly(c(n_vacas, prod_diaria), degree = 9)  |> 
   step_dummy(all_nominal_predictors())
 
 bake(prep(tbsp_recipe), new_data = NULL)
@@ -99,7 +102,7 @@ tbsp_lr_model <- logistic_reg(penalty = tune(), mixture = 1)  |>
 
 ```{r}
 tbsp_wf <- workflow()  |> 
-  add_model(tbsp_lr_model) %>%
+  add_model(tbsp_lr_model) |> 
   add_recipe(tbsp_recipe)
 ```
 
@@ -118,7 +121,7 @@ d) collect_metrics() ou autoplot() para ver o resultado
 ```{r}
 tbsp_resamples <- vfold_cv(tbsp_train, v = 5, strata = "TB")
 grid <- grid_regular(
-  penalty(range = c(-4, -1)),
+  penalty(range = c(-4, -2)),
   levels = 20
 )
 ```
@@ -185,7 +188,6 @@ tbsp_test_preds <- collect_predictions(tbsp_lr_last_fit)
 ## roc
 
 ```{r}
-
 tbsp_roc_curve <- tbsp_test_preds  |>  roc_curve(TB, .pred_0)
 autoplot(tbsp_roc_curve)
 
@@ -238,4 +240,127 @@ tbsp_test_preds |>
   geom_vline(xintercept = 1/percentis, colour = "red", linetype = "dashed", size = 1)
 ```
 
+
+# Árvore de decisão
+
+## Data prep
+
+```{r}
+tbsp_dt_recipe <- recipe(TB ~ ., data = tbsp_train)  |> 
+  step_novel(all_nominal_predictors()) |> 
+  step_zv(all_predictors())
+```
+
+## Modelo
+
+```{r}
+tbsp_dt_model <- decision_tree(
+  cost_complexity = tune(),
+  tree_depth = tune(),
+  min_n = tune()
+)  |> 
+  set_mode("classification")  |> 
+  set_engine("rpart")
+```
+
+
+## Workflow
+
+```{r}
+tbsp_dt_wf <- workflow()  |> 
+  add_model(tbsp_dt_model) |> 
+  add_recipe(tbsp_dt_recipe)
+```
+
+## Tune
+```{r}
+grid_dt <- grid_random(
+  cost_complexity(c(-9, -2)),
+  tree_depth(range = c(5, 15)),
+  min_n(range = c(20, 40)),
+  size = 20
+)
+```
+
+
+```{r}
+tbsp_dt_tune_grid <- tune_grid(
+  tbsp_dt_wf,
+  resamples = tbsp_resamples,
+  grid = grid_dt,
+  metrics = metric_set(roc_auc)
+)
+```
+
+
+```{r}
+autoplot(tbsp_dt_tune_grid)
+collect_metrics(tbsp_dt_tune_grid)
+```
+
+## Desempenho dos modelos finais
+
+```{r}
+tbsp_lr_best_params <- select_best(tbsp_lr_tune_grid, "roc_auc")
+tbsp_lr_wf <- tbsp_wf  |>  finalize_workflow(tbsp_lr_best_params)
+tbsp_lr_last_fit <- last_fit(tbsp_lr_wf, tbsp_initial_split)
+```
+
+
+```{r}
+tbsp_dt_best_params <- select_best(tbsp_dt_tune_grid, "roc_auc")
+tbsp_dt_wf <- tbsp_dt_wf %>% finalize_workflow(tbsp_dt_best_params)
+tbsp_dt_last_fit <- last_fit(tbsp_dt_wf, tbsp_initial_split)
+```
+
+
+```{r}
+tbsp_test_preds <- bind_rows(
+  collect_predictions(tbsp_lr_last_fit) |>  mutate(modelo = "lr"),
+  collect_predictions(tbsp_dt_last_fit) |>  mutate(modelo = "dt")
+)
+```
+
+
+```{r}
+## roc
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  roc_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+
+```{r}
+## lift
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  lift_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+# Variáveis importantes Regressão Logística
+```{r}
+tbspt_lr_last_fit_model <- tbsp_lr_last_fit$.workflow[[1]]$fit$fit
+vip(tbsp_lr_last_fit_model)
+```
+
+# Árvore de Decisão
+```{r}
+tbsp_dt_last_fit_model <- tbsp_dt_last_fit$.workflow[[1]]$fit$fit
+vip(tbsp_dt_last_fit_model)
+```
+
+
+```{r}
+# Guardar tudo ------------------------------------------------------------
+
+write_rds(tbsp_dt_last_fit, "tbsp_dt_last_fit.rds")
+write_rds(tbsp_dt_model, "tbsp_dt_model.rds")
+
+# Modelo final ------------------------------------------------------------
+
+tbsp_final_dt_model <- tbsp_dt_wf  |>  fit(tbsp)
+
+```
 

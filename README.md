@@ -170,13 +170,17 @@ visdat::vis_miss(tbsp_train)
 ![](README_files/figure-gfm/unnamed-chunk-5-1.png)<!-- -->
 
 ``` r
-# tbsp_train  |> 
-#   select(-id, -cod_mun)  |> 
-#   cor( method = "spearman")  |> 
-#   corrplot::corrplot()
+tbsp_train  |> 
+   select(where(is.numeric))  |> 
+   cor()  |> 
+   corrplot::corrplot()
 ```
 
-# Data Prep
+![](README_files/figure-gfm/unnamed-chunk-5-2.png)<!-- -->
+
+# Regressão Logística (não é Machine Learning…)
+
+## Data Prep
 
 ``` r
 tbsp_recipe <- recipe(TB ~ ., data = tbsp_train |> 
@@ -185,7 +189,7 @@ tbsp_recipe <- recipe(TB ~ ., data = tbsp_train |>
   step_normalize(all_numeric_predictors())  |> 
   step_novel(all_nominal_predictors()) |> 
   step_zv(all_predictors()) |> 
-  # step_poly(all_numeric_predictors(), degree = 9)  |> 
+  # step_poly(c(n_vacas, prod_diaria), degree = 9)  |> 
   step_dummy(all_nominal_predictors())
 
 bake(prep(tbsp_recipe), new_data = NULL)
@@ -238,7 +242,7 @@ tbsp_lr_model <- logistic_reg(penalty = tune(), mixture = 1)  |>
 
 ``` r
 tbsp_wf <- workflow()  |> 
-  add_model(tbsp_lr_model) %>%
+  add_model(tbsp_lr_model) |> 
   add_recipe(tbsp_recipe)
 ```
 
@@ -258,7 +262,7 @@ tbsp_wf <- workflow()  |>
 ``` r
 tbsp_resamples <- vfold_cv(tbsp_train, v = 5, strata = "TB")
 grid <- grid_regular(
-  penalty(range = c(-4, -1)),
+  penalty(range = c(-4, -2)),
   levels = 20
 )
 ```
@@ -290,12 +294,12 @@ collect_metrics(tbsp_lr_tune_grid)
 #>  2 0.0001   mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model01
 #>  3 0.0001   precision   binary     0.903     5 0.00612 Preprocessor1_Model01
 #>  4 0.0001   roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model01
-#>  5 0.000144 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model02
-#>  6 0.000144 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model02
-#>  7 0.000144 precision   binary     0.903     5 0.00612 Preprocessor1_Model02
-#>  8 0.000144 roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model02
-#>  9 0.000207 accuracy    binary     0.896     5 0.00673 Preprocessor1_Model03
-#> 10 0.000207 mn_log_loss binary     0.319     5 0.0156  Preprocessor1_Model03
+#>  5 0.000127 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model02
+#>  6 0.000127 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model02
+#>  7 0.000127 precision   binary     0.903     5 0.00612 Preprocessor1_Model02
+#>  8 0.000127 roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model02
+#>  9 0.000162 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model03
+#> 10 0.000162 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model03
 #> # ... with 70 more rows
 collect_metrics(tbsp_lr_tune_grid)  |> 
   ggplot(aes(x = penalty, y = mean)) +
@@ -341,8 +345,8 @@ collect_metrics(tbsp_lr_last_fit)
 #> # A tibble: 2 x 4
 #>   .metric  .estimator .estimate .config             
 #>   <chr>    <chr>          <dbl> <chr>               
-#> 1 accuracy binary         0.897 Preprocessor1_Model1
-#> 2 roc_auc  binary         0.701 Preprocessor1_Model1
+#> 1 accuracy binary         0.899 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.714 Preprocessor1_Model1
 tbsp_test_preds <- collect_predictions(tbsp_lr_last_fit)
 ```
 
@@ -376,8 +380,8 @@ levels(tbsp_test_preds$ TB_class)
 tbsp_test_preds |> conf_mat(TB, TB_class)
 #>           Truth
 #> Prediction   0   1
-#>          0 344  25
-#>          1  47  20
+#>          0 288  18
+#>          1 103  27
 ```
 
 ## risco por faixa de TB
@@ -418,3 +422,158 @@ tbsp_test_preds |>
 ```
 
 ![](README_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
+
+# Árvore de decisão
+
+## Data prep
+
+``` r
+tbsp_dt_recipe <- recipe(TB ~ ., data = tbsp_train)  |> 
+  step_novel(all_nominal_predictors()) |> 
+  step_zv(all_predictors())
+```
+
+## Modelo
+
+``` r
+tbsp_dt_model <- decision_tree(
+  cost_complexity = tune(),
+  tree_depth = tune(),
+  min_n = tune()
+)  |> 
+  set_mode("classification")  |> 
+  set_engine("rpart")
+```
+
+## Workflow
+
+``` r
+tbsp_dt_wf <- workflow()  |> 
+  add_model(tbsp_dt_model) |> 
+  add_recipe(tbsp_dt_recipe)
+```
+
+## Tune
+
+``` r
+grid_dt <- grid_random(
+  cost_complexity(c(-9, -2)),
+  tree_depth(range = c(5, 15)),
+  min_n(range = c(20, 40)),
+  size = 20
+)
+```
+
+``` r
+tbsp_dt_tune_grid <- tune_grid(
+  tbsp_dt_wf,
+  resamples = tbsp_resamples,
+  grid = grid_dt,
+  metrics = metric_set(roc_auc)
+)
+#> Warning: package 'rpart' was built under R version 4.1.1
+```
+
+``` r
+autoplot(tbsp_dt_tune_grid)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
+
+``` r
+collect_metrics(tbsp_dt_tune_grid)
+#> # A tibble: 20 x 9
+#>    cost_complexity tree_depth min_n .metric .estimator  mean     n std_err
+#>              <dbl>      <int> <int> <chr>   <chr>      <dbl> <int>   <dbl>
+#>  1   0.0000000394          14    34 roc_auc binary     0.588     5 0.0259 
+#>  2   0.00000000210         12    30 roc_auc binary     0.609     5 0.0165 
+#>  3   0.00414                8    31 roc_auc binary     0.589     5 0.0258 
+#>  4   0.00000000437         14    22 roc_auc binary     0.634     5 0.0141 
+#>  5   0.000591              10    37 roc_auc binary     0.587     5 0.0276 
+#>  6   0.000000182            5    26 roc_auc binary     0.609     5 0.0164 
+#>  7   0.00000000200         11    21 roc_auc binary     0.635     5 0.0144 
+#>  8   0.00000171             9    37 roc_auc binary     0.587     5 0.0276 
+#>  9   0.000000872           10    34 roc_auc binary     0.588     5 0.0259 
+#> 10   0.0000304              6    35 roc_auc binary     0.589     5 0.0262 
+#> 11   0.0000865              6    39 roc_auc binary     0.587     5 0.0276 
+#> 12   0.0000938             14    37 roc_auc binary     0.587     5 0.0276 
+#> 13   0.00000650            14    24 roc_auc binary     0.655     5 0.0115 
+#> 14   0.00000240            11    35 roc_auc binary     0.589     5 0.0262 
+#> 15   0.000868               9    37 roc_auc binary     0.587     5 0.0276 
+#> 16   0.000000671            8    24 roc_auc binary     0.667     5 0.00817
+#> 17   0.000000936            6    22 roc_auc binary     0.622     5 0.0190 
+#> 18   0.00000000269          5    30 roc_auc binary     0.609     5 0.0165 
+#> 19   0.000000538            7    20 roc_auc binary     0.649     5 0.0149 
+#> 20   0.000253              13    32 roc_auc binary     0.588     5 0.0259 
+#> # ... with 1 more variable: .config <chr>
+```
+
+## Desempenho dos modelos finais
+
+``` r
+tbsp_lr_best_params <- select_best(tbsp_lr_tune_grid, "roc_auc")
+tbsp_lr_wf <- tbsp_wf  |>  finalize_workflow(tbsp_lr_best_params)
+tbsp_lr_last_fit <- last_fit(tbsp_lr_wf, tbsp_initial_split)
+```
+
+``` r
+tbsp_dt_best_params <- select_best(tbsp_dt_tune_grid, "roc_auc")
+tbsp_dt_wf <- tbsp_dt_wf %>% finalize_workflow(tbsp_dt_best_params)
+tbsp_dt_last_fit <- last_fit(tbsp_dt_wf, tbsp_initial_split)
+```
+
+``` r
+tbsp_test_preds <- bind_rows(
+  collect_predictions(tbsp_lr_last_fit) |>  mutate(modelo = "lr"),
+  collect_predictions(tbsp_dt_last_fit) |>  mutate(modelo = "dt")
+)
+```
+
+``` r
+## roc
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  roc_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+![](README_files/figure-gfm/unnamed-chunk-27-1.png)<!-- -->
+
+``` r
+## lift
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  lift_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+![](README_files/figure-gfm/unnamed-chunk-28-1.png)<!-- -->
+
+# Variáveis importantes Regressão Logística
+
+``` r
+tbspt_lr_last_fit_model <- tbsp_lr_last_fit$.workflow[[1]]$fit$fit
+vip(tbsp_lr_last_fit_model)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-29-1.png)<!-- -->
+
+# Árvore de Decisão
+
+``` r
+tbsp_dt_last_fit_model <- tbsp_dt_last_fit$.workflow[[1]]$fit$fit
+vip(tbsp_dt_last_fit_model)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-30-1.png)<!-- -->
+
+``` r
+# Guardar tudo ------------------------------------------------------------
+
+write_rds(tbsp_dt_last_fit, "tbsp_dt_last_fit.rds")
+write_rds(tbsp_dt_model, "tbsp_dt_model.rds")
+
+# Modelo final ------------------------------------------------------------
+
+tbsp_final_dt_model <- tbsp_dt_wf  |>  fit(tbsp)
+```
