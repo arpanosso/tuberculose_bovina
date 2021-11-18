@@ -101,7 +101,7 @@ tbsp_lr_model <- logistic_reg(penalty = tune(), mixture = 1)  |>
 # Workflow
 
 ```{r}
-tbsp_wf <- workflow()  |> 
+tbsp_lr_wf <- workflow()  |> 
   add_model(tbsp_lr_model) |> 
   add_recipe(tbsp_recipe)
 ```
@@ -128,7 +128,7 @@ grid <- grid_regular(
 
 ```{r}
 tbsp_lr_tune_grid <- tune_grid(
-  tbsp_wf,
+  tbsp_lr_wf,
   resamples = tbsp_resamples,
   grid = grid,
   metrics = metric_set(
@@ -136,7 +136,7 @@ tbsp_lr_tune_grid <- tune_grid(
     accuracy,
     roc_auc,
     # kap, # KAPPA
-    precision,
+    # precision,
     # recall,
     # f_meas,
   )
@@ -165,10 +165,10 @@ c) ajusta o modelo final com todos os dados de treino (a base de validação é 
 
 ```{r}
 tbsp_lr_best_params <- select_best(tbsp_lr_tune_grid, "roc_auc")
-tbsp_wf <- tbsp_wf |> finalize_workflow(tbsp_lr_best_params)
+tbsp_lr_wf <- tbsp_lr_wf |> finalize_workflow(tbsp_lr_best_params)
 
 tbsp_lr_last_fit <- last_fit(
-  tbsp_wf,
+  tbsp_lr_wf,
   tbsp_initial_split
 )
 
@@ -201,8 +201,6 @@ tbsp_test_preds <- tbsp_test_preds |>
   mutate(
     TB_class = factor(if_else(.pred_0 > 0.9, "0", "1"))
   ) 
-levels(tbsp_test_preds$ TB)
-levels(tbsp_test_preds$ TB_class)
 tbsp_test_preds |> conf_mat(TB, TB_class)
 ```
 ## risco por faixa de TB
@@ -246,7 +244,8 @@ tbsp_test_preds |>
 ## Data prep
 
 ```{r}
-tbsp_dt_recipe <- recipe(TB ~ ., data = tbsp_train)  |> 
+tbsp_dt_recipe <- recipe(TB ~ ., data = tbsp_train |> 
+                        select(-id, -cod_mun))  |> 
   step_novel(all_nominal_predictors()) |> 
   step_zv(all_predictors())
 ```
@@ -302,7 +301,7 @@ collect_metrics(tbsp_dt_tune_grid)
 
 ```{r}
 tbsp_lr_best_params <- select_best(tbsp_lr_tune_grid, "roc_auc")
-tbsp_lr_wf <- tbsp_wf  |>  finalize_workflow(tbsp_lr_best_params)
+tbsp_lr_wf <- tbsp_lr_wf  |>  finalize_workflow(tbsp_lr_best_params)
 tbsp_lr_last_fit <- last_fit(tbsp_lr_wf, tbsp_initial_split)
 ```
 
@@ -361,6 +360,492 @@ write_rds(tbsp_dt_model, "tbsp_dt_model.rds")
 # Modelo final ------------------------------------------------------------
 
 tbsp_final_dt_model <- tbsp_dt_wf  |>  fit(tbsp)
+```
+
+# Random Forest
+
+## Data prep
+
+```{r}
+tbsp_rf_recipe <- recipe(TB ~ ., data = tbsp_train |> 
+                        select(-id, -cod_mun))  |> 
+  step_novel(all_nominal_predictors()) |> 
+  step_zv(all_predictors())
+```
+
+## Modelo
+
+```{r}
+tbsp_rf_model <- rand_forest(
+  min_n = tune(),
+  mtry = tune(),
+  trees = tune()
+)  |> 
+  set_mode("classification")  |> 
+  set_engine("randomForest")
+```
+
+
+## Workflow
+
+```{r}
+tbsp_rf_wf <- workflow()  |> 
+  add_model(tbsp_rf_model) |> 
+  add_recipe(tbsp_rf_recipe)
+```
+
+## Tune
+```{r}
+grid_rf <- grid_random(
+  min_n(range = c(20, 40)),
+  mtry(range = c(1,10)),
+  trees(range = c(1,1000) ),
+  size = 20
+)
+```
+
+
+```{r}
+tbsp_rf_tune_grid <- tune_grid(
+  tbsp_rf_wf,
+  resamples = tbsp_resamples,
+  grid = grid_rf,
+  metrics = metric_set(roc_auc)
+)
+```
+
+
+```{r}
+autoplot(tbsp_rf_tune_grid)
+collect_metrics(tbsp_rf_tune_grid)
+```
+
+## Desempenho dos modelos finais
+
+```{r}
+tbsp_rf_best_params <- select_best(tbsp_rf_tune_grid, "roc_auc")
+tbsp_rf_wf <- tbsp_rf_wf  |>  finalize_workflow(tbsp_rf_best_params)
+tbsp_rf_last_fit <- last_fit(tbsp_rf_wf, tbsp_initial_split)
+```
+
+
+
+```{r}
+tbsp_test_preds <- bind_rows(
+  collect_predictions(tbsp_lr_last_fit) |>  mutate(modelo = "lr"),
+  collect_predictions(tbsp_rf_last_fit) |>  mutate(modelo = "rf"),
+  collect_predictions(tbsp_dt_last_fit) |>  mutate(modelo = "dt")
+)
+```
+
+
+```{r}
+## roc
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  roc_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+
+```{r}
+## lift
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  lift_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+
+# Random Forest
+```{r}
+tbsp_rf_last_fit_model <- tbsp_rf_last_fit$.workflow[[1]]$fit$fit
+vip(tbsp_rf_last_fit_model)
+```
+
+```{r}
+# Guardar tudo ------------------------------------------------------------
+
+write_rds(tbsp_rf_last_fit, "tbsp_rf_last_fit.rds")
+write_rds(tbsp_rf_model, "tbsp_rf_model.rds")
+
+# Modelo final ------------------------------------------------------------
+tbsp_final_dt_model <- tbsp_rf_wf  |>  fit(tbsp)
+```
+
+# Boosting gradient tree
+
+## Data prep
+
+```{r}
+tbsp_xgb_recipe <- recipe(TB ~ ., data = tbsp_train |> 
+                        select(-id, -cod_mun))  |> 
+  step_novel(all_nominal_predictors()) |> 
+  step_zv(all_predictors())
+```
+
+
+## Estratégia de Tunagem de Hiperparâmetros
+
+### Passo 1:
+
+Achar uma combinação `learning_rate` e `trees` que funciona relativamente bem. 
+
+-   `learn_rate` - 0.05, 0.1, 0.3
+-   `trees` - 100, 500, 1000, 1500
+
+## Modelo
+
+```{r}
+cores = 4
+tbsp_xgb_model <- boost_tree(
+  mtry = 0.8, 
+  trees = tune(), # <---------------
+  min_n = 5, 
+  tree_depth = 4,
+  loss_reduction = 0, # lambda
+  learn_rate = tune(), # epsilon
+  sample_size = 0.8
+) |>  
+  set_mode("classification")  |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+```
+
+
+## Workflow
+
+```{r}
+tbsp_xgb_wf <- workflow()  |> 
+  add_model(tbsp_xgb_model) |> 
+  add_recipe(tbsp_xgb_recipe)
+```
+
+## Tune
+```{r}
+grid_xgb <- expand.grid(
+  learn_rate = c(0.05, 0.3),
+  trees = c(250, 500, 1000)
+)
+```
+
+
+```{r}
+tbsp_xgb_tune_grid <- tune_grid(
+  tbsp_xgb_wf,
+  resamples = tbsp_resamples,
+  grid = grid_xgb,
+  metrics = metric_set(roc_auc)
+)
+```
+
+#### Melhores hiperparâmetros
+
+```{r}
+autoplot(tbsp_xgb_tune_grid)
+tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 6)
+tbsp_xgb_select_best_passo1 <- tbsp_xgb_tune_grid %>% 
+  select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo1
+```
+
+### Passo 2:
+
+São bons valores inciais. Agora, podemos tunar os parâmetros relacionados à árvore.
+
+-   `tree_depth`: vamos deixar ele variar entre 3 e 10.
+-   `min_n`: vamos deixar variar entre 5 e 90.
+
+
+```{r,  cache=TRUE}
+tbsp_xgb_model <- boost_tree(
+  mtry = 0.8,
+  trees = tbsp_xgb_select_best_passo1$trees,
+  min_n = tune(),
+  tree_depth = tune(), 
+  loss_reduction = 0, 
+  learn_rate = tbsp_xgb_select_best_passo1$learn_rate, 
+  sample_size = 0.8
+) %>% 
+  set_mode("classification")  |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow() |>  
+    add_model(tbsp_xgb_model)  |>  
+    add_recipe(tbsp_xgb_recipe)
+
+#### Grid
+tbsp_xgb_grid <- expand.grid(
+  tree_depth = c(3, 4, 6), 
+  min_n = c(30, 60, 90)
+)
+
+tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
+  tune_grid(
+    resamples = tbsp_resamples,
+    grid = tbsp_xgb_grid,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc)
+  )
+
+#### Melhores hiperparâmetros
+autoplot(tbsp_xgb_tune_grid)
+tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
+tbsp_xgb_select_best_passo2 <- tbsp_xgb_tune_grid %>% select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo2
+```
+
+### Passo 3:
+
+Agora temos definidos:
+
+-   `trees` = `r tbsp_xgb_select_best_passo1$trees`
+-   `learn_rate` = `r tbsp_xgb_select_best_passo1$learn_rate`
+-   `min_n` = `r tbsp_xgb_select_best_passo2$min_n`
+-   `tree_depth` = `r tbsp_xgb_select_best_passo2$tree_depth`
+
+Vamos então tunar o `loss_reduction`:
+
+`loss_reduction`: vamos deixar ele variar entre 0 e 2
+
+```{r,  cache=TRUE}
+tbsp_xgb_model <- boost_tree(
+  mtry = 0.8,
+  trees = tbsp_xgb_select_best_passo1$trees,
+  min_n = tbsp_xgb_select_best_passo2$min_n,
+  tree_depth = tbsp_xgb_select_best_passo2$tree_depth, 
+  loss_reduction = tune(), 
+  learn_rate = tbsp_xgb_select_best_passo1$learn_rate, 
+  sample_size = 0.8
+) |> 
+  set_mode("classification") |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow() |>  
+    add_model(tbsp_xgb_model)  |>  
+    add_recipe(tbsp_xgb_recipe)
+
+#### Grid
+tbsp_xgb_grid <- expand.grid(
+  loss_reduction = c(0, 0.05, 1, 2)
+)
+
+tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
+  tune_grid(
+    resamples = tbsp_resamples,
+    grid = tbsp_xgb_grid,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc)
+  )
+
+#### Melhores hiperparâmetros
+autoplot(tbsp_xgb_tune_grid)
+tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
+tbsp_xgb_select_best_passo3 <- tbsp_xgb_tune_grid %>% select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo3
+```
+
+
+
+### Passo 4:
+
+Não parece que o `lossreduction` teve tanto efeito, mas, vamos usar `r tbsp_xgb_select_best_passo3$loss_reduction` que deu o melhor resultado. Até agora temos definido:
+
+-   `trees` = `r tbsp_xgb_select_best_passo1$trees`
+-   `learn_rate` = `r tbsp_xgb_select_best_passo1$learn_rate`
+-   `min_n` = `r tbsp_xgb_select_best_passo2$min_n`
+-   `tree_depth` = `r tbsp_xgb_select_best_passo2$tree_depth`
+-   `lossreduction` = `r tbsp_xgb_select_best_passo3$loss_reduction`
+
+Vamos então tunar o `mtry` e o `sample_size`:
+
+-   `mtry`: de 10% a 100%
+-   `sample_size`: de 50% a 100%
+
+```{r}
+tbsp_xgb_model <- boost_tree(
+  mtry = tune(),
+  trees = tbsp_xgb_select_best_passo1$trees,
+  min_n = tbsp_xgb_select_best_passo2$min_n,
+  tree_depth = tbsp_xgb_select_best_passo2$tree_depth, 
+  loss_reduction = tbsp_xgb_select_best_passo3$loss_reduction, 
+  learn_rate = tbsp_xgb_select_best_passo1$learn_rate, 
+  sample_size = tune()
+) |>  
+  set_mode("classification")  |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow() |>  
+    add_model(tbsp_xgb_model) |>  
+    add_recipe(tbsp_xgb_recipe)
+
+#### Grid
+tbsp_xgb_grid <- expand.grid(
+    sample_size = seq(0.5, 1.0, length.out = 2),
+    mtry = seq(0.1, 1.0, length.out = 2)
+)
+
+tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
+  tune_grid(
+    resamples = tbsp_resamples,
+    grid = tbsp_xgb_grid,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc)
+  )
+
+#### Melhores hiperparâmetros
+autoplot(tbsp_xgb_tune_grid)
+tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
+tbsp_xgb_select_best_passo4 <- tbsp_xgb_tune_grid  |>  select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo4
+```
+### Passo 5:
+
+Vimos que a melhor combinação foi
+
+-   `mtry` = `r tbsp_xgb_select_best_passo4$mtry`
+-   `sample_size` = `r tbsp_xgb_select_best_passo4$sample_size`
+
+Agora vamos tunar o `learn_rate` e o `trees` de novo, mas deixando o `learn_rate` assumir valores menores.
+
+```{r}
+tbsp_xgb_model <- boost_tree(
+  mtry = tbsp_xgb_select_best_passo4$mtry,
+  trees = tune(),
+  min_n = tbsp_xgb_select_best_passo2$min_n,
+  tree_depth = tbsp_xgb_select_best_passo2$tree_depth, 
+  loss_reduction = tbsp_xgb_select_best_passo3$loss_reduction, 
+  learn_rate = tune(), 
+  sample_size = tbsp_xgb_select_best_passo4$sample_size
+) |> 
+  set_mode("classification") |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow() |>  
+    add_model(tbsp_xgb_model) |>  
+    add_recipe(tbsp_xgb_recipe)
+
+#### Grid
+tbsp_xgb_grid <- expand.grid(
+    learn_rate = c(0.05, 0.10, 0.15, 0.25),
+    trees = c(100, 250)
+)
+
+tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
+  tune_grid(
+    resamples = tbsp_resamples,
+    grid = tbsp_xgb_grid,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc)
+  )
+
+#### Melhores hiperparâmetros
+autoplot(tbsp_xgb_tune_grid)
+tbsp_xgb_tune_grid |>  show_best(metric = "roc_auc", n = 5)
+tbsp_xgb_select_best_passo5 <- tbsp_xgb_tune_grid  |>  select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo5
+```
+
+
+## Desempenho dos modelos finais
+
+```{r}
+tbsp_xgb_model <- boost_tree(
+  mtry = tbsp_xgb_select_best_passo4$mtry,
+  trees = tbsp_xgb_select_best_passo5$trees,
+  min_n = tbsp_xgb_select_best_passo2$min_n,
+  tree_depth = tbsp_xgb_select_best_passo2$tree_depth, 
+  loss_reduction = tbsp_xgb_select_best_passo3$loss_reduction, 
+  learn_rate = tbsp_xgb_select_best_passo5$learn_rate, 
+  sample_size = tbsp_xgb_select_best_passo4$sample_size
+) |> 
+  set_mode("classification") |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow()  |>  
+    add_model(tbsp_xgb_model) |>  
+    add_recipe(tbsp_xgb_recipe)
+
+tbsp_xgb_last_fit <- tbsp_xgb_wf  |>  
+  last_fit(
+    split = tbsp_initial_split,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc, f_meas, accuracy, precision, recall)
+  )
+
+#### Métricas
+collect_metrics(tbsp_xgb_last_fit)
+
+#### Variáveis Importantes
+tbsp_xgb_last_fit |>  
+  pluck(".workflow", 1)  |>    
+  extract_fit_parsnip() |>  
+  vip::vip(num_features = 20)
+
+#### Curva ROC
+tbsp_xgb_last_fit  |>  
+    collect_predictions()  |>  
+    roc_curve(TB, .pred_0) %>% 
+    autoplot()
 
 ```
+
+## MODELO FINAL FINAL
+
+```{r}
+tbsp_xgb_modelo_final <- tbsp_xgb_wf |>  fit(tbsp)
+
+saveRDS(tbsp_xgb_modelo_final, "tbsp_xgb_modelo_final.rds")
+
+predict(tbsp_xgb_modelo_final, new_data = tbsp_test, type="prob")  |> 
+  arrange(desc(.pred_1))
+
+table(
+  predict(tbsp_xgb_modelo_final, new_data = tbsp_test, type="prob")$.pred_1 > 0.5,
+  tbsp_test$TB
+)
+
+```
+
+
+
+
+```{r}
+tbsp_test_preds <- bind_rows(
+  collect_predictions(tbsp_lr_last_fit) |>  mutate(modelo = "lr"),
+  collect_predictions(tbsp_rf_last_fit) |>  mutate(modelo = "rf"),
+  collect_predictions(tbsp_dt_last_fit) |>  mutate(modelo = "dt"),
+  collect_predictions(tbsp_xgb_last_fit) |>  mutate(modelo = "xgb")
+)
+```
+
+
+```{r}
+## roc
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  roc_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+
+```{r}
+## lift
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  lift_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+
+# XGboost
+```{r}
+tbsp_xgb_last_fit_model <- tbsp_xgb_last_fit$.workflow[[1]]$fit$fit
+vip(tbsp_xgb_last_fit_model)
+```
+
 

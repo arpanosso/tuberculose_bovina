@@ -241,7 +241,7 @@ tbsp_lr_model <- logistic_reg(penalty = tune(), mixture = 1)  |>
 # Workflow
 
 ``` r
-tbsp_wf <- workflow()  |> 
+tbsp_lr_wf <- workflow()  |> 
   add_model(tbsp_lr_model) |> 
   add_recipe(tbsp_recipe)
 ```
@@ -269,7 +269,7 @@ grid <- grid_regular(
 
 ``` r
 tbsp_lr_tune_grid <- tune_grid(
-  tbsp_wf,
+  tbsp_lr_wf,
   resamples = tbsp_resamples,
   grid = grid,
   metrics = metric_set(
@@ -277,7 +277,7 @@ tbsp_lr_tune_grid <- tune_grid(
     accuracy,
     roc_auc,
     # kap, # KAPPA
-    precision,
+    # precision,
     # recall,
     # f_meas,
   )
@@ -287,20 +287,21 @@ tbsp_lr_tune_grid <- tune_grid(
 
 ``` r
 collect_metrics(tbsp_lr_tune_grid)
-#> # A tibble: 80 x 7
+#> # A tibble: 60 x 7
 #>     penalty .metric     .estimator  mean     n std_err .config              
 #>       <dbl> <chr>       <chr>      <dbl> <int>   <dbl> <chr>                
 #>  1 0.0001   accuracy    binary     0.895     5 0.00664 Preprocessor1_Model01
 #>  2 0.0001   mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model01
-#>  3 0.0001   precision   binary     0.903     5 0.00612 Preprocessor1_Model01
-#>  4 0.0001   roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model01
-#>  5 0.000127 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model02
-#>  6 0.000127 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model02
-#>  7 0.000127 precision   binary     0.903     5 0.00612 Preprocessor1_Model02
-#>  8 0.000127 roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model02
-#>  9 0.000162 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model03
-#> 10 0.000162 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model03
-#> # ... with 70 more rows
+#>  3 0.0001   roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model01
+#>  4 0.000127 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model02
+#>  5 0.000127 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model02
+#>  6 0.000127 roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model02
+#>  7 0.000162 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model03
+#>  8 0.000162 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model03
+#>  9 0.000162 roc_auc     binary     0.645     5 0.0203  Preprocessor1_Model03
+#> 10 0.000207 accuracy    binary     0.896     5 0.00673 Preprocessor1_Model04
+#> # ... with 50 more rows
+
 collect_metrics(tbsp_lr_tune_grid)  |> 
   ggplot(aes(x = penalty, y = mean)) +
   geom_point() +
@@ -322,10 +323,10 @@ collect_metrics(tbsp_lr_tune_grid)  |>
 
 ``` r
 tbsp_lr_best_params <- select_best(tbsp_lr_tune_grid, "roc_auc")
-tbsp_wf <- tbsp_wf |> finalize_workflow(tbsp_lr_best_params)
+tbsp_lr_wf <- tbsp_lr_wf |> finalize_workflow(tbsp_lr_best_params)
 
 tbsp_lr_last_fit <- last_fit(
-  tbsp_wf,
+  tbsp_lr_wf,
   tbsp_initial_split
 )
 
@@ -373,10 +374,6 @@ tbsp_test_preds <- tbsp_test_preds |>
   mutate(
     TB_class = factor(if_else(.pred_0 > 0.9, "0", "1"))
   ) 
-levels(tbsp_test_preds$ TB)
-#> [1] "0" "1"
-levels(tbsp_test_preds$ TB_class)
-#> [1] "0" "1"
 tbsp_test_preds |> conf_mat(TB, TB_class)
 #>           Truth
 #> Prediction   0   1
@@ -428,7 +425,8 @@ tbsp_test_preds |>
 ## Data prep
 
 ``` r
-tbsp_dt_recipe <- recipe(TB ~ ., data = tbsp_train)  |> 
+tbsp_dt_recipe <- recipe(TB ~ ., data = tbsp_train |> 
+                        select(-id, -cod_mun))  |> 
   step_novel(all_nominal_predictors()) |> 
   step_zv(all_predictors())
 ```
@@ -471,7 +469,6 @@ tbsp_dt_tune_grid <- tune_grid(
   grid = grid_dt,
   metrics = metric_set(roc_auc)
 )
-#> Warning: package 'rpart' was built under R version 4.1.1
 ```
 
 ``` r
@@ -485,26 +482,26 @@ collect_metrics(tbsp_dt_tune_grid)
 #> # A tibble: 20 x 9
 #>    cost_complexity tree_depth min_n .metric .estimator  mean     n std_err
 #>              <dbl>      <int> <int> <chr>   <chr>      <dbl> <int>   <dbl>
-#>  1   0.0000000394          14    34 roc_auc binary     0.588     5 0.0259 
-#>  2   0.00000000210         12    30 roc_auc binary     0.609     5 0.0165 
-#>  3   0.00414                8    31 roc_auc binary     0.589     5 0.0258 
-#>  4   0.00000000437         14    22 roc_auc binary     0.634     5 0.0141 
-#>  5   0.000591              10    37 roc_auc binary     0.587     5 0.0276 
-#>  6   0.000000182            5    26 roc_auc binary     0.609     5 0.0164 
-#>  7   0.00000000200         11    21 roc_auc binary     0.635     5 0.0144 
-#>  8   0.00000171             9    37 roc_auc binary     0.587     5 0.0276 
-#>  9   0.000000872           10    34 roc_auc binary     0.588     5 0.0259 
-#> 10   0.0000304              6    35 roc_auc binary     0.589     5 0.0262 
-#> 11   0.0000865              6    39 roc_auc binary     0.587     5 0.0276 
-#> 12   0.0000938             14    37 roc_auc binary     0.587     5 0.0276 
-#> 13   0.00000650            14    24 roc_auc binary     0.655     5 0.0115 
-#> 14   0.00000240            11    35 roc_auc binary     0.589     5 0.0262 
-#> 15   0.000868               9    37 roc_auc binary     0.587     5 0.0276 
-#> 16   0.000000671            8    24 roc_auc binary     0.667     5 0.00817
-#> 17   0.000000936            6    22 roc_auc binary     0.622     5 0.0190 
-#> 18   0.00000000269          5    30 roc_auc binary     0.609     5 0.0165 
-#> 19   0.000000538            7    20 roc_auc binary     0.649     5 0.0149 
-#> 20   0.000253              13    32 roc_auc binary     0.588     5 0.0259 
+#>  1   0.0000000394          14    34 roc_auc binary     0.608     5  0.0170
+#>  2   0.00000000210         12    30 roc_auc binary     0.609     5  0.0170
+#>  3   0.00414                8    31 roc_auc binary     0.562     5  0.0280
+#>  4   0.00000000437         14    22 roc_auc binary     0.614     5  0.0357
+#>  5   0.000591              10    37 roc_auc binary     0.587     5  0.0276
+#>  6   0.000000182            5    26 roc_auc binary     0.639     5  0.0166
+#>  7   0.00000000200         11    21 roc_auc binary     0.615     5  0.0359
+#>  8   0.00000171             9    37 roc_auc binary     0.587     5  0.0276
+#>  9   0.000000872           10    34 roc_auc binary     0.608     5  0.0170
+#> 10   0.0000304              6    35 roc_auc binary     0.589     5  0.0262
+#> 11   0.0000865              6    39 roc_auc binary     0.587     5  0.0276
+#> 12   0.0000938             14    37 roc_auc binary     0.587     5  0.0276
+#> 13   0.00000650            14    24 roc_auc binary     0.613     5  0.0355
+#> 14   0.00000240            11    35 roc_auc binary     0.589     5  0.0262
+#> 15   0.000868               9    37 roc_auc binary     0.587     5  0.0276
+#> 16   0.000000671            8    24 roc_auc binary     0.613     5  0.0355
+#> 17   0.000000936            6    22 roc_auc binary     0.614     5  0.0357
+#> 18   0.00000000269          5    30 roc_auc binary     0.612     5  0.0184
+#> 19   0.000000538            7    20 roc_auc binary     0.615     5  0.0359
+#> 20   0.000253              13    32 roc_auc binary     0.608     5  0.0170
 #> # ... with 1 more variable: .config <chr>
 ```
 
@@ -512,7 +509,7 @@ collect_metrics(tbsp_dt_tune_grid)
 
 ``` r
 tbsp_lr_best_params <- select_best(tbsp_lr_tune_grid, "roc_auc")
-tbsp_lr_wf <- tbsp_wf  |>  finalize_workflow(tbsp_lr_best_params)
+tbsp_lr_wf <- tbsp_lr_wf  |>  finalize_workflow(tbsp_lr_best_params)
 tbsp_lr_last_fit <- last_fit(tbsp_lr_wf, tbsp_initial_split)
 ```
 
@@ -577,3 +574,636 @@ write_rds(tbsp_dt_model, "tbsp_dt_model.rds")
 
 tbsp_final_dt_model <- tbsp_dt_wf  |>  fit(tbsp)
 ```
+
+# Random Forest
+
+## Data prep
+
+``` r
+tbsp_rf_recipe <- recipe(TB ~ ., data = tbsp_train |> 
+                        select(-id, -cod_mun))  |> 
+  step_novel(all_nominal_predictors()) |> 
+  step_zv(all_predictors())
+```
+
+## Modelo
+
+``` r
+tbsp_rf_model <- rand_forest(
+  min_n = tune(),
+  mtry = tune(),
+  trees = tune()
+)  |> 
+  set_mode("classification")  |> 
+  set_engine("randomForest")
+```
+
+## Workflow
+
+``` r
+tbsp_rf_wf <- workflow()  |> 
+  add_model(tbsp_rf_model) |> 
+  add_recipe(tbsp_rf_recipe)
+```
+
+## Tune
+
+``` r
+grid_rf <- grid_random(
+  min_n(range = c(20, 40)),
+  mtry(range = c(1,10)),
+  trees(range = c(1,1000) ),
+  size = 20
+)
+```
+
+``` r
+tbsp_rf_tune_grid <- tune_grid(
+  tbsp_rf_wf,
+  resamples = tbsp_resamples,
+  grid = grid_rf,
+  metrics = metric_set(roc_auc)
+)
+```
+
+``` r
+autoplot(tbsp_rf_tune_grid)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-37-1.png)<!-- -->
+
+``` r
+collect_metrics(tbsp_rf_tune_grid)
+#> # A tibble: 20 x 9
+#>     mtry trees min_n .metric .estimator  mean     n std_err .config             
+#>    <int> <int> <int> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
+#>  1     6   864    26 roc_auc binary     0.683     5  0.0197 Preprocessor1_Model~
+#>  2     6    74    24 roc_auc binary     0.669     5  0.0200 Preprocessor1_Model~
+#>  3     8   273    34 roc_auc binary     0.684     5  0.0204 Preprocessor1_Model~
+#>  4     7   514    35 roc_auc binary     0.678     5  0.0289 Preprocessor1_Model~
+#>  5     7   389    35 roc_auc binary     0.672     5  0.0218 Preprocessor1_Model~
+#>  6     1   703    40 roc_auc binary     0.644     5  0.0109 Preprocessor1_Model~
+#>  7     9   676    32 roc_auc binary     0.689     5  0.0258 Preprocessor1_Model~
+#>  8     2   709    28 roc_auc binary     0.672     5  0.0129 Preprocessor1_Model~
+#>  9     1   390    26 roc_auc binary     0.628     5  0.0147 Preprocessor1_Model~
+#> 10    10   325    31 roc_auc binary     0.673     5  0.0266 Preprocessor1_Model~
+#> 11     8   383    37 roc_auc binary     0.668     5  0.0251 Preprocessor1_Model~
+#> 12    10   680    35 roc_auc binary     0.686     5  0.0187 Preprocessor1_Model~
+#> 13     8   146    36 roc_auc binary     0.666     5  0.0219 Preprocessor1_Model~
+#> 14     9   819    30 roc_auc binary     0.680     5  0.0266 Preprocessor1_Model~
+#> 15     4   740    23 roc_auc binary     0.668     5  0.0210 Preprocessor1_Model~
+#> 16    10    15    34 roc_auc binary     0.627     5  0.0140 Preprocessor1_Model~
+#> 17     4   528    22 roc_auc binary     0.688     5  0.0156 Preprocessor1_Model~
+#> 18     2   663    33 roc_auc binary     0.669     5  0.0173 Preprocessor1_Model~
+#> 19     3   685    33 roc_auc binary     0.672     5  0.0214 Preprocessor1_Model~
+#> 20     1   701    21 roc_auc binary     0.677     5  0.0240 Preprocessor1_Model~
+```
+
+## Desempenho dos modelos finais
+
+``` r
+tbsp_rf_best_params <- select_best(tbsp_rf_tune_grid, "roc_auc")
+tbsp_rf_wf <- tbsp_rf_wf  |>  finalize_workflow(tbsp_rf_best_params)
+tbsp_rf_last_fit <- last_fit(tbsp_rf_wf, tbsp_initial_split)
+```
+
+``` r
+tbsp_test_preds <- bind_rows(
+  collect_predictions(tbsp_lr_last_fit) |>  mutate(modelo = "lr"),
+  collect_predictions(tbsp_rf_last_fit) |>  mutate(modelo = "rf"),
+  collect_predictions(tbsp_dt_last_fit) |>  mutate(modelo = "dt")
+)
+```
+
+``` r
+## roc
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  roc_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+![](README_files/figure-gfm/unnamed-chunk-40-1.png)<!-- -->
+
+``` r
+## lift
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  lift_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+![](README_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
+
+# Random Forest
+
+``` r
+tbsp_rf_last_fit_model <- tbsp_rf_last_fit$.workflow[[1]]$fit$fit
+vip(tbsp_rf_last_fit_model)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-42-1.png)<!-- -->
+
+``` r
+# Guardar tudo ------------------------------------------------------------
+
+write_rds(tbsp_rf_last_fit, "tbsp_rf_last_fit.rds")
+write_rds(tbsp_rf_model, "tbsp_rf_model.rds")
+
+# Modelo final ------------------------------------------------------------
+tbsp_final_dt_model <- tbsp_rf_wf  |>  fit(tbsp)
+```
+
+# Boosting gradient tree
+
+## Data prep
+
+``` r
+tbsp_xgb_recipe <- recipe(TB ~ ., data = tbsp_train |> 
+                        select(-id, -cod_mun))  |> 
+  step_novel(all_nominal_predictors()) |> 
+  step_zv(all_predictors())
+```
+
+## Estratégia de Tunagem de Hiperparâmetros
+
+### Passo 1:
+
+Achar uma combinação `learning_rate` e `trees` que funciona
+relativamente bem.
+
+-   `learn_rate` - 0.05, 0.1, 0.3
+-   `trees` - 100, 500, 1000, 1500
+
+## Modelo
+
+``` r
+cores = 4
+tbsp_xgb_model <- boost_tree(
+  mtry = 0.8, 
+  trees = tune(), # <---------------
+  min_n = 5, 
+  tree_depth = 4,
+  loss_reduction = 0, # lambda
+  learn_rate = tune(), # epsilon
+  sample_size = 0.8
+) |>  
+  set_mode("classification")  |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+```
+
+## Workflow
+
+``` r
+tbsp_xgb_wf <- workflow()  |> 
+  add_model(tbsp_xgb_model) |> 
+  add_recipe(tbsp_xgb_recipe)
+```
+
+## Tune
+
+``` r
+grid_xgb <- expand.grid(
+  learn_rate = c(0.05, 0.3),
+  trees = c(250, 500, 1000)
+)
+```
+
+``` r
+tbsp_xgb_tune_grid <- tune_grid(
+  tbsp_xgb_wf,
+  resamples = tbsp_resamples,
+  grid = grid_xgb,
+  metrics = metric_set(roc_auc)
+)
+```
+
+#### Melhores hiperparâmetros
+
+``` r
+autoplot(tbsp_xgb_tune_grid)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-49-1.png)<!-- -->
+
+``` r
+tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 6)
+#> # A tibble: 6 x 8
+#>   trees learn_rate .metric .estimator  mean     n std_err .config             
+#>   <dbl>      <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
+#> 1   250       0.05 roc_auc binary     0.688     5  0.0320 Preprocessor1_Model1
+#> 2   500       0.05 roc_auc binary     0.673     5  0.0353 Preprocessor1_Model2
+#> 3  1000       0.05 roc_auc binary     0.657     5  0.0341 Preprocessor1_Model3
+#> 4   250       0.3  roc_auc binary     0.644     5  0.0373 Preprocessor1_Model4
+#> 5   500       0.3  roc_auc binary     0.621     5  0.0289 Preprocessor1_Model5
+#> 6  1000       0.3  roc_auc binary     0.611     5  0.0271 Preprocessor1_Model6
+tbsp_xgb_select_best_passo1 <- tbsp_xgb_tune_grid %>% 
+  select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo1
+#> # A tibble: 1 x 3
+#>   trees learn_rate .config             
+#>   <dbl>      <dbl> <chr>               
+#> 1   250       0.05 Preprocessor1_Model1
+```
+
+### Passo 2:
+
+São bons valores inciais. Agora, podemos tunar os parâmetros
+relacionados à árvore.
+
+-   `tree_depth`: vamos deixar ele variar entre 3 e 10.
+-   `min_n`: vamos deixar variar entre 5 e 90.
+
+``` r
+tbsp_xgb_model <- boost_tree(
+  mtry = 0.8,
+  trees = tbsp_xgb_select_best_passo1$trees,
+  min_n = tune(),
+  tree_depth = tune(), 
+  loss_reduction = 0, 
+  learn_rate = tbsp_xgb_select_best_passo1$learn_rate, 
+  sample_size = 0.8
+) %>% 
+  set_mode("classification")  |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow() |>  
+    add_model(tbsp_xgb_model)  |>  
+    add_recipe(tbsp_xgb_recipe)
+
+#### Grid
+tbsp_xgb_grid <- expand.grid(
+  tree_depth = c(3, 4, 6), 
+  min_n = c(30, 60, 90)
+)
+
+tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
+  tune_grid(
+    resamples = tbsp_resamples,
+    grid = tbsp_xgb_grid,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc)
+  )
+
+#### Melhores hiperparâmetros
+autoplot(tbsp_xgb_tune_grid)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-50-1.png)<!-- -->
+
+``` r
+tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
+#> # A tibble: 5 x 8
+#>   min_n tree_depth .metric .estimator  mean     n std_err .config             
+#>   <dbl>      <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
+#> 1    60          3 roc_auc binary     0.667     5 0.0180  Preprocessor1_Model4
+#> 2    30          3 roc_auc binary     0.665     5 0.0131  Preprocessor1_Model1
+#> 3    30          6 roc_auc binary     0.664     5 0.00764 Preprocessor1_Model3
+#> 4    60          6 roc_auc binary     0.658     5 0.0241  Preprocessor1_Model6
+#> 5    30          4 roc_auc binary     0.658     5 0.0109  Preprocessor1_Model2
+tbsp_xgb_select_best_passo2 <- tbsp_xgb_tune_grid %>% select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo2
+#> # A tibble: 1 x 3
+#>   min_n tree_depth .config             
+#>   <dbl>      <dbl> <chr>               
+#> 1    60          3 Preprocessor1_Model4
+```
+
+### Passo 3:
+
+Agora temos definidos:
+
+-   `trees` = 250
+-   `learn_rate` = 0.05
+-   `min_n` = 60
+-   `tree_depth` = 3
+
+Vamos então tunar o `loss_reduction`:
+
+`loss_reduction`: vamos deixar ele variar entre 0 e 2
+
+``` r
+tbsp_xgb_model <- boost_tree(
+  mtry = 0.8,
+  trees = tbsp_xgb_select_best_passo1$trees,
+  min_n = tbsp_xgb_select_best_passo2$min_n,
+  tree_depth = tbsp_xgb_select_best_passo2$tree_depth, 
+  loss_reduction = tune(), 
+  learn_rate = tbsp_xgb_select_best_passo1$learn_rate, 
+  sample_size = 0.8
+) |> 
+  set_mode("classification") |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow() |>  
+    add_model(tbsp_xgb_model)  |>  
+    add_recipe(tbsp_xgb_recipe)
+
+#### Grid
+tbsp_xgb_grid <- expand.grid(
+  loss_reduction = c(0, 0.05, 1, 2)
+)
+
+tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
+  tune_grid(
+    resamples = tbsp_resamples,
+    grid = tbsp_xgb_grid,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc)
+  )
+
+#### Melhores hiperparâmetros
+autoplot(tbsp_xgb_tune_grid)
+#> Warning: Transformation introduced infinite values in continuous x-axis
+
+#> Warning: Transformation introduced infinite values in continuous x-axis
+```
+
+![](README_files/figure-gfm/unnamed-chunk-51-1.png)<!-- -->
+
+``` r
+tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
+#> # A tibble: 4 x 7
+#>   loss_reduction .metric .estimator  mean     n std_err .config             
+#>            <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
+#> 1           2    roc_auc binary     0.652     5  0.0197 Preprocessor1_Model4
+#> 2           0.05 roc_auc binary     0.652     5  0.0233 Preprocessor1_Model2
+#> 3           0    roc_auc binary     0.651     5  0.0256 Preprocessor1_Model1
+#> 4           1    roc_auc binary     0.647     5  0.0241 Preprocessor1_Model3
+tbsp_xgb_select_best_passo3 <- tbsp_xgb_tune_grid %>% select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo3
+#> # A tibble: 1 x 2
+#>   loss_reduction .config             
+#>            <dbl> <chr>               
+#> 1              2 Preprocessor1_Model4
+```
+
+### Passo 4:
+
+Não parece que o `lossreduction` teve tanto efeito, mas, vamos usar 2
+que deu o melhor resultado. Até agora temos definido:
+
+-   `trees` = 250
+-   `learn_rate` = 0.05
+-   `min_n` = 60
+-   `tree_depth` = 3
+-   `lossreduction` = 2
+
+Vamos então tunar o `mtry` e o `sample_size`:
+
+-   `mtry`: de 10% a 100%
+-   `sample_size`: de 50% a 100%
+
+``` r
+tbsp_xgb_model <- boost_tree(
+  mtry = tune(),
+  trees = tbsp_xgb_select_best_passo1$trees,
+  min_n = tbsp_xgb_select_best_passo2$min_n,
+  tree_depth = tbsp_xgb_select_best_passo2$tree_depth, 
+  loss_reduction = tbsp_xgb_select_best_passo3$loss_reduction, 
+  learn_rate = tbsp_xgb_select_best_passo1$learn_rate, 
+  sample_size = tune()
+) |>  
+  set_mode("classification")  |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow() |>  
+    add_model(tbsp_xgb_model) |>  
+    add_recipe(tbsp_xgb_recipe)
+
+#### Grid
+tbsp_xgb_grid <- expand.grid(
+    sample_size = seq(0.5, 1.0, length.out = 2),
+    mtry = seq(0.1, 1.0, length.out = 2)
+)
+
+tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
+  tune_grid(
+    resamples = tbsp_resamples,
+    grid = tbsp_xgb_grid,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc)
+  )
+
+#### Melhores hiperparâmetros
+autoplot(tbsp_xgb_tune_grid)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-52-1.png)<!-- -->
+
+``` r
+tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
+#> # A tibble: 4 x 8
+#>    mtry sample_size .metric .estimator  mean     n std_err .config             
+#>   <dbl>       <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
+#> 1   0.1         1   roc_auc binary     0.669     5  0.0278 Preprocessor1_Model2
+#> 2   1           1   roc_auc binary     0.657     5  0.0203 Preprocessor1_Model4
+#> 3   1           0.5 roc_auc binary     0.623     5  0.0249 Preprocessor1_Model3
+#> 4   0.1         0.5 roc_auc binary     0.535     5  0.0350 Preprocessor1_Model1
+tbsp_xgb_select_best_passo4 <- tbsp_xgb_tune_grid  |>  select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo4
+#> # A tibble: 1 x 3
+#>    mtry sample_size .config             
+#>   <dbl>       <dbl> <chr>               
+#> 1   0.1           1 Preprocessor1_Model2
+```
+
+### Passo 5:
+
+Vimos que a melhor combinação foi
+
+-   `mtry` = 0.1
+-   `sample_size` = 1
+
+Agora vamos tunar o `learn_rate` e o `trees` de novo, mas deixando o
+`learn_rate` assumir valores menores.
+
+``` r
+tbsp_xgb_model <- boost_tree(
+  mtry = tbsp_xgb_select_best_passo4$mtry,
+  trees = tune(),
+  min_n = tbsp_xgb_select_best_passo2$min_n,
+  tree_depth = tbsp_xgb_select_best_passo2$tree_depth, 
+  loss_reduction = tbsp_xgb_select_best_passo3$loss_reduction, 
+  learn_rate = tune(), 
+  sample_size = tbsp_xgb_select_best_passo4$sample_size
+) |> 
+  set_mode("classification") |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow() |>  
+    add_model(tbsp_xgb_model) |>  
+    add_recipe(tbsp_xgb_recipe)
+
+#### Grid
+tbsp_xgb_grid <- expand.grid(
+    learn_rate = c(0.05, 0.10, 0.15, 0.25),
+    trees = c(100, 250)
+)
+
+tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
+  tune_grid(
+    resamples = tbsp_resamples,
+    grid = tbsp_xgb_grid,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc)
+  )
+
+#### Melhores hiperparâmetros
+autoplot(tbsp_xgb_tune_grid)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-53-1.png)<!-- -->
+
+``` r
+tbsp_xgb_tune_grid |>  show_best(metric = "roc_auc", n = 5)
+#> # A tibble: 5 x 8
+#>   trees learn_rate .metric .estimator  mean     n std_err .config             
+#>   <dbl>      <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
+#> 1   100       0.1  roc_auc binary     0.676     5  0.0227 Preprocessor1_Model3
+#> 2   250       0.1  roc_auc binary     0.676     5  0.0227 Preprocessor1_Model4
+#> 3   100       0.05 roc_auc binary     0.662     5  0.0246 Preprocessor1_Model1
+#> 4   250       0.05 roc_auc binary     0.662     5  0.0246 Preprocessor1_Model2
+#> 5   100       0.25 roc_auc binary     0.645     5  0.0166 Preprocessor1_Model7
+tbsp_xgb_select_best_passo5 <- tbsp_xgb_tune_grid  |>  select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo5
+#> # A tibble: 1 x 3
+#>   trees learn_rate .config             
+#>   <dbl>      <dbl> <chr>               
+#> 1   100        0.1 Preprocessor1_Model3
+```
+
+## Desempenho dos modelos finais
+
+``` r
+tbsp_xgb_model <- boost_tree(
+  mtry = tbsp_xgb_select_best_passo4$mtry,
+  trees = tbsp_xgb_select_best_passo5$trees,
+  min_n = tbsp_xgb_select_best_passo2$min_n,
+  tree_depth = tbsp_xgb_select_best_passo2$tree_depth, 
+  loss_reduction = tbsp_xgb_select_best_passo3$loss_reduction, 
+  learn_rate = tbsp_xgb_select_best_passo5$learn_rate, 
+  sample_size = tbsp_xgb_select_best_passo4$sample_size
+) |> 
+  set_mode("classification") |> 
+  set_engine("xgboost", nthread = cores, counts = FALSE)
+
+#### Workflow
+tbsp_xgb_wf <- workflow()  |>  
+    add_model(tbsp_xgb_model) |>  
+    add_recipe(tbsp_xgb_recipe)
+
+tbsp_xgb_last_fit <- tbsp_xgb_wf  |>  
+  last_fit(
+    split = tbsp_initial_split,
+    control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
+    metrics = metric_set(roc_auc, f_meas, accuracy, precision, recall)
+  )
+#> Warning: The `...` are not used in this function but one or more objects were
+#> passed: 'control'
+
+#### Métricas
+collect_metrics(tbsp_xgb_last_fit)
+#> # A tibble: 5 x 4
+#>   .metric   .estimator .estimate .config             
+#>   <chr>     <chr>          <dbl> <chr>               
+#> 1 f_meas    binary         0.946 Preprocessor1_Model1
+#> 2 accuracy  binary         0.897 Preprocessor1_Model1
+#> 3 precision binary         0.897 Preprocessor1_Model1
+#> 4 recall    binary         1     Preprocessor1_Model1
+#> 5 roc_auc   binary         0.715 Preprocessor1_Model1
+
+#### Variáveis Importantes
+tbsp_xgb_last_fit |>  
+  pluck(".workflow", 1)  |>    
+  extract_fit_parsnip() |>  
+  vip::vip(num_features = 20)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-54-1.png)<!-- -->
+
+``` r
+#### Curva ROC
+tbsp_xgb_last_fit  |>  
+    collect_predictions()  |>  
+    roc_curve(TB, .pred_0) %>% 
+    autoplot()
+```
+
+![](README_files/figure-gfm/unnamed-chunk-54-2.png)<!-- -->
+
+## MODELO FINAL FINAL
+
+``` r
+tbsp_xgb_modelo_final <- tbsp_xgb_wf |>  fit(tbsp)
+#> [16:45:28] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+
+saveRDS(tbsp_xgb_modelo_final, "tbsp_xgb_modelo_final.rds")
+
+predict(tbsp_xgb_modelo_final, new_data = tbsp_test, type="prob")  |> 
+  arrange(desc(.pred_1))
+#> # A tibble: 436 x 2
+#>    .pred_0 .pred_1
+#>      <dbl>   <dbl>
+#>  1   0.738   0.262
+#>  2   0.740   0.260
+#>  3   0.741   0.259
+#>  4   0.743   0.257
+#>  5   0.743   0.257
+#>  6   0.744   0.256
+#>  7   0.747   0.253
+#>  8   0.748   0.252
+#>  9   0.753   0.247
+#> 10   0.753   0.247
+#> # ... with 426 more rows
+
+table(
+  predict(tbsp_xgb_modelo_final, new_data = tbsp_test, type="prob")$.pred_1 > 0.5,
+  tbsp_test$TB
+)
+#>        
+#>           0   1
+#>   FALSE 391  45
+```
+
+``` r
+tbsp_test_preds <- bind_rows(
+  collect_predictions(tbsp_lr_last_fit) |>  mutate(modelo = "lr"),
+  collect_predictions(tbsp_rf_last_fit) |>  mutate(modelo = "rf"),
+  collect_predictions(tbsp_dt_last_fit) |>  mutate(modelo = "dt"),
+  collect_predictions(tbsp_xgb_last_fit) |>  mutate(modelo = "xgb")
+)
+```
+
+``` r
+## roc
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  roc_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+![](README_files/figure-gfm/unnamed-chunk-57-1.png)<!-- -->
+
+``` r
+## lift
+tbsp_test_preds  |> 
+  group_by(modelo)  |> 
+  lift_curve(TB, .pred_0)  |> 
+  autoplot()
+```
+
+![](README_files/figure-gfm/unnamed-chunk-58-1.png)<!-- -->
+
+# XGboost
+
+``` r
+tbsp_xgb_last_fit_model <- tbsp_xgb_last_fit$.workflow[[1]]$fit$fit
+vip(tbsp_xgb_last_fit_model)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-59-1.png)<!-- -->
