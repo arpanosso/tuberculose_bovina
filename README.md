@@ -764,8 +764,8 @@ tbsp_xgb_wf <- workflow()  |>
 
 ``` r
 grid_xgb <- expand.grid(
-  learn_rate = c(0.05, 0.3),
-  trees = c(250, 500, 1000)
+  learn_rate = c(0.05, 0.3, .8, 1.2),
+  trees = c(2, 250, 500, 1000)
 )
 ```
 
@@ -789,21 +789,21 @@ autoplot(tbsp_xgb_tune_grid)
 ``` r
 tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 6)
 #> # A tibble: 6 x 8
-#>   trees learn_rate .metric .estimator  mean     n std_err .config             
-#>   <dbl>      <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
-#> 1   250       0.05 roc_auc binary     0.688     5  0.0320 Preprocessor1_Model1
-#> 2   500       0.05 roc_auc binary     0.673     5  0.0353 Preprocessor1_Model2
-#> 3  1000       0.05 roc_auc binary     0.657     5  0.0341 Preprocessor1_Model3
-#> 4   250       0.3  roc_auc binary     0.644     5  0.0373 Preprocessor1_Model4
-#> 5   500       0.3  roc_auc binary     0.621     5  0.0289 Preprocessor1_Model5
-#> 6  1000       0.3  roc_auc binary     0.611     5  0.0271 Preprocessor1_Model6
+#>   trees learn_rate .metric .estimator  mean     n std_err .config              
+#>   <dbl>      <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>                
+#> 1   250       0.05 roc_auc binary     0.688     5 0.0320  Preprocessor1_Model02
+#> 2   500       0.05 roc_auc binary     0.673     5 0.0353  Preprocessor1_Model03
+#> 3     2       0.05 roc_auc binary     0.670     5 0.00957 Preprocessor1_Model01
+#> 4     2       0.3  roc_auc binary     0.661     5 0.0140  Preprocessor1_Model05
+#> 5  1000       0.05 roc_auc binary     0.657     5 0.0341  Preprocessor1_Model04
+#> 6     2       0.8  roc_auc binary     0.649     5 0.0292  Preprocessor1_Model09
 tbsp_xgb_select_best_passo1 <- tbsp_xgb_tune_grid %>% 
   select_best(metric = "roc_auc")
 tbsp_xgb_select_best_passo1
 #> # A tibble: 1 x 3
-#>   trees learn_rate .config             
-#>   <dbl>      <dbl> <chr>               
-#> 1   250       0.05 Preprocessor1_Model1
+#>   trees learn_rate .config              
+#>   <dbl>      <dbl> <chr>                
+#> 1   250       0.05 Preprocessor1_Model02
 ```
 
 ### Passo 2:
@@ -834,8 +834,8 @@ tbsp_xgb_wf <- workflow() |>
 
 #### Grid
 tbsp_xgb_grid <- expand.grid(
-  tree_depth = c(3, 4, 6), 
-  min_n = c(30, 60, 90)
+  tree_depth = c(1, 3, 4, 6, 10), 
+  min_n = c(5, 30, 60, 90, 100, 200)
 )
 
 tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
@@ -855,19 +855,19 @@ autoplot(tbsp_xgb_tune_grid)
 ``` r
 tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
 #> # A tibble: 5 x 8
-#>   min_n tree_depth .metric .estimator  mean     n std_err .config             
-#>   <dbl>      <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
-#> 1    60          3 roc_auc binary     0.667     5 0.0180  Preprocessor1_Model4
-#> 2    30          3 roc_auc binary     0.665     5 0.0131  Preprocessor1_Model1
-#> 3    30          6 roc_auc binary     0.664     5 0.00764 Preprocessor1_Model3
-#> 4    60          6 roc_auc binary     0.658     5 0.0241  Preprocessor1_Model6
-#> 5    30          4 roc_auc binary     0.658     5 0.0109  Preprocessor1_Model2
-tbsp_xgb_select_best_passo2 <- tbsp_xgb_tune_grid %>% select_best(metric = "roc_auc")
+#>   min_n tree_depth .metric .estimator  mean     n std_err .config              
+#>   <dbl>      <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>                
+#> 1     5          4 roc_auc binary     0.691     5  0.0337 Preprocessor1_Model03
+#> 2     5          3 roc_auc binary     0.690     5  0.0295 Preprocessor1_Model02
+#> 3     5          6 roc_auc binary     0.684     5  0.0335 Preprocessor1_Model04
+#> 4     5          1 roc_auc binary     0.684     5  0.0139 Preprocessor1_Model01
+#> 5     5         10 roc_auc binary     0.684     5  0.0328 Preprocessor1_Model05
+tbsp_xgb_select_best_passo2 <- tbsp_xgb_tune_grid |>  select_best(metric = "roc_auc")
 tbsp_xgb_select_best_passo2
 #> # A tibble: 1 x 3
-#>   min_n tree_depth .config             
-#>   <dbl>      <dbl> <chr>               
-#> 1    60          3 Preprocessor1_Model4
+#>   min_n tree_depth .config              
+#>   <dbl>      <dbl> <chr>                
+#> 1     5          4 Preprocessor1_Model03
 ```
 
 ### Passo 3:
@@ -876,8 +876,8 @@ Agora temos definidos:
 
 -   `trees` = 250
 -   `learn_rate` = 0.05
--   `min_n` = 60
--   `tree_depth` = 3
+-   `min_n` = 5
+-   `tree_depth` = 4
 
 Vamos então tunar o `loss_reduction`:
 
@@ -903,7 +903,7 @@ tbsp_xgb_wf <- workflow() |>
 
 #### Grid
 tbsp_xgb_grid <- expand.grid(
-  loss_reduction = c(0, 0.05, 1, 2)
+  loss_reduction = c(0, 0.05, 1, 2, 4)
 )
 
 tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
@@ -925,31 +925,32 @@ autoplot(tbsp_xgb_tune_grid)
 
 ``` r
 tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
-#> # A tibble: 4 x 7
+#> # A tibble: 5 x 7
 #>   loss_reduction .metric .estimator  mean     n std_err .config             
 #>            <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
-#> 1           2    roc_auc binary     0.652     5  0.0197 Preprocessor1_Model4
-#> 2           0.05 roc_auc binary     0.652     5  0.0233 Preprocessor1_Model2
-#> 3           0    roc_auc binary     0.651     5  0.0256 Preprocessor1_Model1
-#> 4           1    roc_auc binary     0.647     5  0.0241 Preprocessor1_Model3
+#> 1           4    roc_auc binary     0.701     5  0.0243 Preprocessor1_Model5
+#> 2           2    roc_auc binary     0.695     5  0.0292 Preprocessor1_Model4
+#> 3           0.05 roc_auc binary     0.686     5  0.0348 Preprocessor1_Model2
+#> 4           1    roc_auc binary     0.686     5  0.0316 Preprocessor1_Model3
+#> 5           0    roc_auc binary     0.685     5  0.0368 Preprocessor1_Model1
 tbsp_xgb_select_best_passo3 <- tbsp_xgb_tune_grid %>% select_best(metric = "roc_auc")
 tbsp_xgb_select_best_passo3
 #> # A tibble: 1 x 2
 #>   loss_reduction .config             
 #>            <dbl> <chr>               
-#> 1              2 Preprocessor1_Model4
+#> 1              4 Preprocessor1_Model5
 ```
 
 ### Passo 4:
 
-Não parece que o `lossreduction` teve tanto efeito, mas, vamos usar 2
+Não parece que o `lossreduction` teve tanto efeito, mas, vamos usar 4
 que deu o melhor resultado. Até agora temos definido:
 
 -   `trees` = 250
 -   `learn_rate` = 0.05
--   `min_n` = 60
--   `tree_depth` = 3
--   `lossreduction` = 2
+-   `min_n` = 5
+-   `tree_depth` = 4
+-   `lossreduction` = 4
 
 Vamos então tunar o `mtry` e o `sample_size`:
 
@@ -999,23 +1000,23 @@ tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
 #> # A tibble: 4 x 8
 #>    mtry sample_size .metric .estimator  mean     n std_err .config             
 #>   <dbl>       <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
-#> 1   0.1         1   roc_auc binary     0.669     5  0.0278 Preprocessor1_Model2
-#> 2   1           1   roc_auc binary     0.657     5  0.0203 Preprocessor1_Model4
-#> 3   1           0.5 roc_auc binary     0.623     5  0.0249 Preprocessor1_Model3
-#> 4   0.1         0.5 roc_auc binary     0.535     5  0.0350 Preprocessor1_Model1
+#> 1   1           1   roc_auc binary     0.704     5  0.0168 Preprocessor1_Model4
+#> 2   0.1         1   roc_auc binary     0.694     5  0.0200 Preprocessor1_Model2
+#> 3   0.1         0.5 roc_auc binary     0.686     5  0.0184 Preprocessor1_Model1
+#> 4   1           0.5 roc_auc binary     0.679     5  0.0325 Preprocessor1_Model3
 tbsp_xgb_select_best_passo4 <- tbsp_xgb_tune_grid  |>  select_best(metric = "roc_auc")
 tbsp_xgb_select_best_passo4
 #> # A tibble: 1 x 3
 #>    mtry sample_size .config             
 #>   <dbl>       <dbl> <chr>               
-#> 1   0.1           1 Preprocessor1_Model2
+#> 1     1           1 Preprocessor1_Model4
 ```
 
 ### Passo 5:
 
 Vimos que a melhor combinação foi
 
--   `mtry` = 0.1
+-   `mtry` = 1
 -   `sample_size` = 1
 
 Agora vamos tunar o `learn_rate` e o `trees` de novo, mas deixando o
@@ -1064,17 +1065,17 @@ tbsp_xgb_tune_grid |>  show_best(metric = "roc_auc", n = 5)
 #> # A tibble: 5 x 8
 #>   trees learn_rate .metric .estimator  mean     n std_err .config             
 #>   <dbl>      <dbl> <chr>   <chr>      <dbl> <int>   <dbl> <chr>               
-#> 1   100       0.1  roc_auc binary     0.676     5  0.0227 Preprocessor1_Model3
-#> 2   250       0.1  roc_auc binary     0.676     5  0.0227 Preprocessor1_Model4
-#> 3   100       0.05 roc_auc binary     0.662     5  0.0246 Preprocessor1_Model1
-#> 4   250       0.05 roc_auc binary     0.662     5  0.0246 Preprocessor1_Model2
-#> 5   100       0.25 roc_auc binary     0.645     5  0.0166 Preprocessor1_Model7
+#> 1   100       0.25 roc_auc binary     0.707     5  0.0165 Preprocessor1_Model7
+#> 2   250       0.25 roc_auc binary     0.707     5  0.0165 Preprocessor1_Model8
+#> 3   250       0.05 roc_auc binary     0.704     5  0.0168 Preprocessor1_Model2
+#> 4   100       0.05 roc_auc binary     0.704     5  0.0168 Preprocessor1_Model1
+#> 5   100       0.1  roc_auc binary     0.702     5  0.0158 Preprocessor1_Model3
 tbsp_xgb_select_best_passo5 <- tbsp_xgb_tune_grid  |>  select_best(metric = "roc_auc")
 tbsp_xgb_select_best_passo5
 #> # A tibble: 1 x 3
 #>   trees learn_rate .config             
 #>   <dbl>      <dbl> <chr>               
-#> 1   100        0.1 Preprocessor1_Model3
+#> 1   100       0.25 Preprocessor1_Model7
 ```
 
 ## Desempenho dos modelos finais
@@ -1115,7 +1116,7 @@ collect_metrics(tbsp_xgb_last_fit)
 #> 2 accuracy  binary         0.897 Preprocessor1_Model1
 #> 3 precision binary         0.897 Preprocessor1_Model1
 #> 4 recall    binary         1     Preprocessor1_Model1
-#> 5 roc_auc   binary         0.715 Preprocessor1_Model1
+#> 5 roc_auc   binary         0.751 Preprocessor1_Model1
 
 #### Variáveis Importantes
 tbsp_xgb_last_fit |>  
@@ -1140,7 +1141,7 @@ tbsp_xgb_last_fit  |>
 
 ``` r
 tbsp_xgb_modelo_final <- tbsp_xgb_wf |>  fit(tbsp)
-#> [16:45:28] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+#> [11:26:21] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
 
 saveRDS(tbsp_xgb_modelo_final, "tbsp_xgb_modelo_final.rds")
 
@@ -1149,16 +1150,16 @@ predict(tbsp_xgb_modelo_final, new_data = tbsp_test, type="prob")  |>
 #> # A tibble: 436 x 2
 #>    .pred_0 .pred_1
 #>      <dbl>   <dbl>
-#>  1   0.738   0.262
-#>  2   0.740   0.260
-#>  3   0.741   0.259
-#>  4   0.743   0.257
-#>  5   0.743   0.257
-#>  6   0.744   0.256
-#>  7   0.747   0.253
-#>  8   0.748   0.252
-#>  9   0.753   0.247
-#> 10   0.753   0.247
+#>  1   0.455   0.545
+#>  2   0.495   0.505
+#>  3   0.538   0.462
+#>  4   0.553   0.447
+#>  5   0.560   0.440
+#>  6   0.565   0.435
+#>  7   0.580   0.420
+#>  8   0.583   0.417
+#>  9   0.598   0.402
+#> 10   0.621   0.379
 #> # ... with 426 more rows
 
 table(
@@ -1167,7 +1168,8 @@ table(
 )
 #>        
 #>           0   1
-#>   FALSE 391  45
+#>   FALSE 391  43
+#>   TRUE    0   2
 ```
 
 ``` r

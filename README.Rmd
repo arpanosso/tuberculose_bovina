@@ -523,8 +523,8 @@ tbsp_xgb_wf <- workflow()  |>
 ## Tune
 ```{r}
 grid_xgb <- expand.grid(
-  learn_rate = c(0.05, 0.3),
-  trees = c(250, 500, 1000)
+  learn_rate = c(0.05, 0.3, .8, 1.2),
+  trees = c(2, 250, 500, 1000)
 )
 ```
 
@@ -576,8 +576,8 @@ tbsp_xgb_wf <- workflow() |>
 
 #### Grid
 tbsp_xgb_grid <- expand.grid(
-  tree_depth = c(3, 4, 6), 
-  min_n = c(30, 60, 90)
+  tree_depth = c(1, 3, 4, 6, 10), 
+  min_n = c(5, 30, 60, 90, 100, 200)
 )
 
 tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
@@ -591,7 +591,7 @@ tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>
 #### Melhores hiperparâmetros
 autoplot(tbsp_xgb_tune_grid)
 tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
-tbsp_xgb_select_best_passo2 <- tbsp_xgb_tune_grid %>% select_best(metric = "roc_auc")
+tbsp_xgb_select_best_passo2 <- tbsp_xgb_tune_grid |>  select_best(metric = "roc_auc")
 tbsp_xgb_select_best_passo2
 ```
 
@@ -628,7 +628,7 @@ tbsp_xgb_wf <- workflow() |>
 
 #### Grid
 tbsp_xgb_grid <- expand.grid(
-  loss_reduction = c(0, 0.05, 1, 2)
+  loss_reduction = c(0, 0.05, 1, 2, 4)
 )
 
 tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>  
