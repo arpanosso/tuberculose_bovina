@@ -282,25 +282,15 @@ tbsp_lr_tune_grid <- tune_grid(
     # f_meas,
   )
 )
+#> Warning: package 'glmnet' was built under R version 4.1.2
 # autoplot(tbsp_lr_tune_grid)
 ```
 
 ``` r
-collect_metrics(tbsp_lr_tune_grid)
-#> # A tibble: 60 x 7
-#>     penalty .metric     .estimator  mean     n std_err .config              
-#>       <dbl> <chr>       <chr>      <dbl> <int>   <dbl> <chr>                
-#>  1 0.0001   accuracy    binary     0.895     5 0.00664 Preprocessor1_Model01
-#>  2 0.0001   mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model01
-#>  3 0.0001   roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model01
-#>  4 0.000127 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model02
-#>  5 0.000127 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model02
-#>  6 0.000127 roc_auc     binary     0.645     5 0.0204  Preprocessor1_Model02
-#>  7 0.000162 accuracy    binary     0.895     5 0.00664 Preprocessor1_Model03
-#>  8 0.000162 mn_log_loss binary     0.319     5 0.0157  Preprocessor1_Model03
-#>  9 0.000162 roc_auc     binary     0.645     5 0.0203  Preprocessor1_Model03
-#> 10 0.000207 accuracy    binary     0.896     5 0.00673 Preprocessor1_Model04
-#> # ... with 50 more rows
+area_rl <- collect_metrics(tbsp_lr_tune_grid) |> 
+  filter(.metric == "roc_auc") |> 
+  summarise(area = mean(mean),
+            desvio_pad = mean(std_err))
 
 collect_metrics(tbsp_lr_tune_grid)  |> 
   ggplot(aes(x = penalty, y = mean)) +
@@ -337,6 +327,17 @@ vip(tbsp_lr_last_fit_model)
 
 ![](README_files/figure-gfm/unnamed-chunk-12-1.png)<!-- -->
 
+``` r
+## 
+tbsp_lr_last_fit$.metrics
+#> [[1]]
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.899 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.714 Preprocessor1_Model1
+```
+
 # Guardar tudo
 
 ``` r
@@ -348,21 +349,21 @@ collect_metrics(tbsp_lr_last_fit)
 #>   <chr>    <chr>          <dbl> <chr>               
 #> 1 accuracy binary         0.899 Preprocessor1_Model1
 #> 2 roc_auc  binary         0.714 Preprocessor1_Model1
-tbsp_test_preds <- collect_predictions(tbsp_lr_last_fit)
+tbsp_test_preds_lr <- collect_predictions(tbsp_lr_last_fit)
 ```
 
 ## roc
 
 ``` r
-tbsp_roc_curve <- tbsp_test_preds  |>  roc_curve(TB, .pred_0)
-autoplot(tbsp_roc_curve)
+tbsp_roc_curve_lr <- tbsp_test_preds_lr  |>  roc_curve(TB, .pred_0)
+autoplot(tbsp_roc_curve_lr)
 ```
 
 ![](README_files/figure-gfm/unnamed-chunk-14-1.png)<!-- -->
 
 ``` r
-tbsp_lift_curve <- tbsp_test_preds  |>  lift_curve(TB, .pred_0)
-autoplot(tbsp_lift_curve)
+tbsp_lift_curve_lr <- tbsp_test_preds_lr  |>  lift_curve(TB, .pred_0)
+autoplot(tbsp_lift_curve_lr)
 ```
 
 ![](README_files/figure-gfm/unnamed-chunk-14-2.png)<!-- -->
@@ -370,55 +371,16 @@ autoplot(tbsp_lift_curve)
 ### Matriz de Confusão
 
 ``` r
-tbsp_test_preds <- tbsp_test_preds |> 
+tbsp_test_preds_lr <- tbsp_test_preds_lr |> 
   mutate(
     TB_class = factor(if_else(.pred_0 > 0.9, "0", "1"))
   ) 
-tbsp_test_preds |> conf_mat(TB, TB_class)
+tbsp_test_preds_lr |> conf_mat(TB, TB_class)
 #>           Truth
 #> Prediction   0   1
 #>          0 288  18
 #>          1 103  27
 ```
-
-## risco por faixa de TB
-
-``` r
-tbsp_test_preds  |> 
-  mutate(
-    tb =  factor(ntile(.pred_0, 10))
-  ) |> 
-  count(tb, TB) %>%
-  ggplot(aes(x = tb, y = n, fill = TB)) +
-  geom_col(position = "fill") +
-  geom_label(aes(label = n), position = "fill") +
-  coord_flip()
-```
-
-![](README_files/figure-gfm/unnamed-chunk-16-1.png)<!-- -->
-
-## gráfico sobre os da classe 1
-
-``` r
-percentis = 20
-tbsp_test_preds |> 
-  mutate(
-    tb = factor(ntile(.pred_0, percentis))
-  ) |> 
-  filter(TB == 1)  |> 
-  group_by(tb, .drop = FALSE)  |> 
-  summarise(
-    n = n(),
-    media = mean(.pred_0)
-  ) |> 
-  mutate(p = n/sum(n)) |> 
-  ggplot(aes(x = p, y = tb)) +
-  geom_col() +
-  geom_label(aes(label = scales::percent(p))) +
-  geom_vline(xintercept = 1/percentis, colour = "red", linetype = "dashed", size = 1)
-```
-
-![](README_files/figure-gfm/unnamed-chunk-17-1.png)<!-- -->
 
 # Árvore de decisão
 
@@ -475,7 +437,7 @@ tbsp_dt_tune_grid <- tune_grid(
 autoplot(tbsp_dt_tune_grid)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-23-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-21-1.png)<!-- -->
 
 ``` r
 collect_metrics(tbsp_dt_tune_grid)
@@ -534,7 +496,7 @@ tbsp_test_preds  |>
   autoplot()
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-27-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-25-1.png)<!-- -->
 
 ``` r
 ## lift
@@ -544,7 +506,7 @@ tbsp_test_preds  |>
   autoplot()
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-28-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-26-1.png)<!-- -->
 
 # Variáveis importantes Regressão Logística
 
@@ -553,7 +515,7 @@ tbspt_lr_last_fit_model <- tbsp_lr_last_fit$.workflow[[1]]$fit$fit
 vip(tbsp_lr_last_fit_model)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-29-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-27-1.png)<!-- -->
 
 # Árvore de Decisão
 
@@ -562,17 +524,63 @@ tbsp_dt_last_fit_model <- tbsp_dt_last_fit$.workflow[[1]]$fit$fit
 vip(tbsp_dt_last_fit_model)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-30-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-28-1.png)<!-- -->
 
 ``` r
 # Guardar tudo ------------------------------------------------------------
 
 write_rds(tbsp_dt_last_fit, "tbsp_dt_last_fit.rds")
 write_rds(tbsp_dt_model, "tbsp_dt_model.rds")
+collect_metrics(tbsp_dt_last_fit)
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.885 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.696 Preprocessor1_Model1
+collect_metrics(tbsp_lr_last_fit)
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.899 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.714 Preprocessor1_Model1
 
 # Modelo final ------------------------------------------------------------
 
 tbsp_final_dt_model <- tbsp_dt_wf  |>  fit(tbsp)
+```
+
+``` r
+tbsp_test_preds_dt <- collect_predictions(tbsp_dt_last_fit)
+```
+
+## roc
+
+``` r
+tbsp_roc_curve_dt <- tbsp_test_preds_dt  |>  roc_curve(TB, .pred_0)
+autoplot(tbsp_roc_curve_dt)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-31-1.png)<!-- -->
+
+``` r
+tbsp_lift_curve_dt <- tbsp_test_preds_dt  |>  lift_curve(TB, .pred_0)
+autoplot(tbsp_lift_curve_dt)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-31-2.png)<!-- -->
+
+### Matriz de Confusão
+
+``` r
+tbsp_test_preds_dt <- tbsp_test_preds_dt |> 
+  mutate(
+    TB_class = factor(if_else(.pred_0 > 0.9, "0", "1"))
+  ) 
+tbsp_test_preds_dt |> conf_mat(TB, TB_class)
+#>           Truth
+#> Prediction   0   1
+#>          0 317  22
+#>          1  74  23
 ```
 
 # Random Forest
@@ -630,7 +638,7 @@ tbsp_rf_tune_grid <- tune_grid(
 autoplot(tbsp_rf_tune_grid)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-37-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-38-1.png)<!-- -->
 
 ``` r
 collect_metrics(tbsp_rf_tune_grid)
@@ -683,7 +691,7 @@ tbsp_test_preds  |>
   autoplot()
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-40-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
 
 ``` r
 ## lift
@@ -693,7 +701,7 @@ tbsp_test_preds  |>
   autoplot()
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-42-1.png)<!-- -->
 
 # Random Forest
 
@@ -702,16 +710,68 @@ tbsp_rf_last_fit_model <- tbsp_rf_last_fit$.workflow[[1]]$fit$fit
 vip(tbsp_rf_last_fit_model)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-42-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-43-1.png)<!-- -->
 
 ``` r
 # Guardar tudo ------------------------------------------------------------
 
 write_rds(tbsp_rf_last_fit, "tbsp_rf_last_fit.rds")
 write_rds(tbsp_rf_model, "tbsp_rf_model.rds")
+collect_metrics(tbsp_lr_last_fit)
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.899 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.714 Preprocessor1_Model1
+collect_metrics(tbsp_dt_last_fit)
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.885 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.696 Preprocessor1_Model1
+collect_metrics(tbsp_rf_last_fit)
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.897 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.702 Preprocessor1_Model1
 
 # Modelo final ------------------------------------------------------------
 tbsp_final_dt_model <- tbsp_rf_wf  |>  fit(tbsp)
+```
+
+``` r
+tbsp_test_preds_rf <- collect_predictions(tbsp_rf_last_fit)
+```
+
+## roc
+
+``` r
+tbsp_roc_curve_rf <- tbsp_test_preds_rf  |>  roc_curve(TB, .pred_0)
+autoplot(tbsp_roc_curve_rf)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-46-1.png)<!-- -->
+
+``` r
+tbsp_lift_curve_rf <- tbsp_test_preds_rf  |>  lift_curve(TB, .pred_0)
+autoplot(tbsp_lift_curve_rf)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-46-2.png)<!-- -->
+
+### Matriz de Confusão
+
+``` r
+tbsp_test_preds_rf <- tbsp_test_preds_rf |> 
+  mutate(
+    TB_class = factor(if_else(.pred_0 > 0.9, "0", "1"))
+  ) 
+tbsp_test_preds_rf |> conf_mat(TB, TB_class)
+#>           Truth
+#> Prediction   0   1
+#>          0 370  35
+#>          1  21  10
 ```
 
 # Boosting gradient tree
@@ -776,6 +836,66 @@ tbsp_xgb_tune_grid <- tune_grid(
   grid = grid_xgb,
   metrics = metric_set(roc_auc)
 )
+#> [17:53:02] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:02] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:02] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:05] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:05] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:05] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:08] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:08] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:08] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:10] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:10] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:10] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:13] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:13] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:13] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:16] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:16] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:16] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:19] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:19] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:19] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:21] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:21] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:21] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:24] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:24] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:24] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:27] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:27] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:27] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:29] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:29] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:29] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:32] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:32] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:32] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:35] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:35] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:35] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:38] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:38] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:38] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:40] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:40] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:40] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:43] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:43] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:43] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:46] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:46] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:46] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:48] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:48] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:48] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:51] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:51] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:51] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:53] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:53] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:53:53] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
 ```
 
 #### Melhores hiperparâmetros
@@ -784,7 +904,7 @@ tbsp_xgb_tune_grid <- tune_grid(
 autoplot(tbsp_xgb_tune_grid)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-49-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-53-1.png)<!-- -->
 
 ``` r
 tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 6)
@@ -850,7 +970,7 @@ tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>
 autoplot(tbsp_xgb_tune_grid)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-50-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-54-1.png)<!-- -->
 
 ``` r
 tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
@@ -921,7 +1041,7 @@ autoplot(tbsp_xgb_tune_grid)
 #> Warning: Transformation introduced infinite values in continuous x-axis
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-51-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-55-1.png)<!-- -->
 
 ``` r
 tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
@@ -993,7 +1113,7 @@ tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>
 autoplot(tbsp_xgb_tune_grid)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-52-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-56-1.png)<!-- -->
 
 ``` r
 tbsp_xgb_tune_grid  |>  show_best(metric = "roc_auc", n = 5)
@@ -1053,12 +1173,32 @@ tbsp_xgb_tune_grid <- tbsp_xgb_wf  |>
     control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
     metrics = metric_set(roc_auc)
   )
+#> [17:56:47] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:56:49] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:56:51] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:56:53] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:56:54] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:56:56] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:56:58] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:56:59] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:01] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:03] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:04] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:06] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:08] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:09] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:10] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:11] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:13] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:14] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:15] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
+#> [17:57:17] WARNING: amalgamation/../src/c_api/c_api.cc:718: `ntree_limit` is deprecated, use `iteration_range` instead.
 
 #### Melhores hiperparâmetros
 autoplot(tbsp_xgb_tune_grid)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-53-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-57-1.png)<!-- -->
 
 ``` r
 tbsp_xgb_tune_grid |>  show_best(metric = "roc_auc", n = 5)
@@ -1104,8 +1244,6 @@ tbsp_xgb_last_fit <- tbsp_xgb_wf  |>
     control = control_grid(save_pred = TRUE, verbose = FALSE, allow_par = TRUE),
     metrics = metric_set(roc_auc, f_meas, accuracy, precision, recall)
   )
-#> Warning: The `...` are not used in this function but one or more objects were
-#> passed: 'control'
 
 #### Métricas
 collect_metrics(tbsp_xgb_last_fit)
@@ -1125,7 +1263,7 @@ tbsp_xgb_last_fit |>
   vip::vip(num_features = 20)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-54-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-58-1.png)<!-- -->
 
 ``` r
 #### Curva ROC
@@ -1135,13 +1273,13 @@ tbsp_xgb_last_fit  |>
     autoplot()
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-54-2.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-58-2.png)<!-- -->
 
 ## MODELO FINAL FINAL
 
 ``` r
 tbsp_xgb_modelo_final <- tbsp_xgb_wf |>  fit(tbsp)
-#> [11:26:21] WARNING: amalgamation/../src/learner.cc:1095: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
+#> [17:57:20] WARNING: amalgamation/../src/learner.cc:1115: Starting in XGBoost 1.3.0, the default evaluation metric used with the objective 'binary:logistic' was changed from 'error' to 'logloss'. Explicitly set eval_metric if you'd like to restore the old behavior.
 
 saveRDS(tbsp_xgb_modelo_final, "tbsp_xgb_modelo_final.rds")
 
@@ -1189,7 +1327,7 @@ tbsp_test_preds  |>
   autoplot()
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-57-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-61-1.png)<!-- -->
 
 ``` r
 ## lift
@@ -1199,7 +1337,7 @@ tbsp_test_preds  |>
   autoplot()
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-58-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-62-1.png)<!-- -->
 
 # XGboost
 
@@ -1208,4 +1346,88 @@ tbsp_xgb_last_fit_model <- tbsp_xgb_last_fit$.workflow[[1]]$fit$fit
 vip(tbsp_xgb_last_fit_model)
 ```
 
-![](README_files/figure-gfm/unnamed-chunk-59-1.png)<!-- -->
+![](README_files/figure-gfm/unnamed-chunk-63-1.png)<!-- -->
+
+``` r
+tbsp_test_preds_xgb <- collect_predictions(tbsp_xgb_last_fit)
+```
+
+## roc
+
+``` r
+tbsp_roc_curve_xgb <- tbsp_test_preds_xgb  |>  roc_curve(TB, .pred_0)
+autoplot(tbsp_roc_curve_xgb)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-65-1.png)<!-- -->
+
+``` r
+tbsp_lift_curve_xgb <- tbsp_test_preds_xgb  |>  lift_curve(TB, .pred_0)
+autoplot(tbsp_lift_curve_xgb)
+```
+
+![](README_files/figure-gfm/unnamed-chunk-65-2.png)<!-- -->
+
+### Matriz de Confusão
+
+``` r
+tbsp_test_preds_xgb <- tbsp_test_preds_xgb |> 
+  mutate(
+    TB_class = factor(if_else(.pred_0 > 0.9, "0", "1"))
+  ) 
+tbsp_test_preds_xgb |> conf_mat(TB, TB_class)
+#>           Truth
+#> Prediction   0   1
+#>          0 288  12
+#>          1 103  33
+```
+
+#### resumo final
+
+``` r
+collect_metrics(tbsp_lr_last_fit)
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.899 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.714 Preprocessor1_Model1
+collect_metrics(tbsp_dt_last_fit)
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.885 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.696 Preprocessor1_Model1
+collect_metrics(tbsp_rf_last_fit)
+#> # A tibble: 2 x 4
+#>   .metric  .estimator .estimate .config             
+#>   <chr>    <chr>          <dbl> <chr>               
+#> 1 accuracy binary         0.897 Preprocessor1_Model1
+#> 2 roc_auc  binary         0.702 Preprocessor1_Model1
+collect_metrics(tbsp_xgb_last_fit)
+#> # A tibble: 5 x 4
+#>   .metric   .estimator .estimate .config             
+#>   <chr>     <chr>          <dbl> <chr>               
+#> 1 f_meas    binary         0.946 Preprocessor1_Model1
+#> 2 accuracy  binary         0.897 Preprocessor1_Model1
+#> 3 precision binary         0.897 Preprocessor1_Model1
+#> 4 recall    binary         1     Preprocessor1_Model1
+#> 5 roc_auc   binary         0.751 Preprocessor1_Model1
+```
+
+``` r
+tbsp_lr_best_params
+#> # A tibble: 1 x 2
+#>   penalty .config              
+#>     <dbl> <chr>                
+#> 1    0.01 Preprocessor1_Model20
+tbsp_dt_best_params
+#> # A tibble: 1 x 4
+#>   cost_complexity tree_depth min_n .config              
+#>             <dbl>      <int> <int> <chr>                
+#> 1     0.000000182          5    26 Preprocessor1_Model06
+tbsp_rf_best_params
+#> # A tibble: 1 x 4
+#>    mtry trees min_n .config              
+#>   <int> <int> <int> <chr>                
+#> 1     9   676    32 Preprocessor1_Model07
+```
